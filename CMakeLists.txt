@@ -37,6 +37,6 @@ if(NOT ARGON2_LIB_FOUND)
 endif()
 
 if(NOT ARGON2_LIB_FOUND)
-	message(FATAL_ERROR "Argon2 library not found. Install the development package (e.g. 'libargon2-dev' on Debian/Ubuntu) or set ARGON2_LIB to the argon2 library path before configuring.")
+	message(FATAL_ERROR "Argon2 library not found.")
 endif()
 
