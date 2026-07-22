@@ -22,7 +22,7 @@ void help(){
         std::cout << "  -r, --random-filename  : generates random 24 character long filename for encryption\n";
         std::cout << "  -k, --keyfile          : using an existing keyfile\n";
         std::cout << "  -p, --password         : protect keyfile with password (min 8 character)\n";
-        std::cout << "  -h, --help             : display this help message\n";
+        std::cout << "  -h, --help             : display help\n";
 }
 
 struct args{
