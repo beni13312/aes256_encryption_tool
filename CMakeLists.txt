@@ -13,6 +13,12 @@ add_executable(encrypt_tool
 		src/secure_heap.h
 		src/consts.h
 		src/getpasswd.h
+		src/cli.cpp
+		src/cli.h
+		src/args.h
+		src/app.cpp
+		src/app.h
+		src/secure_heap.cpp
 )
 target_compile_options(encrypt_tool PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(encrypt_tool PRIVATE ${PROJECT_SOURCE_DIR})

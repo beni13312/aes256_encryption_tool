@@ -1,5 +1,8 @@
 #pragma once
 
+constexpr int  MIN_PASSWORD_LENGTH = 8; // character
+constexpr int MAX_PASSWORD_LENGTH = 56; // character
+
 inline constexpr size_t FILENAME_MAX_LENGTH = 255;
 inline constexpr size_t FILENAME_SIZE_INT = sizeof(uint32_t);
 

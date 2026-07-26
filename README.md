@@ -3,11 +3,11 @@ Fast file and folder encryption program using AES-256-GCM
 
 ## Features
 - File/folder encryption and decryption
+- KDF based password authentication
 - Random file name generation
 
-## Structure
-
-
+## Encryption/decryption
+`user password -> KDF -> key -> file/folder`
 ## CMake build Debug
 
 `cmake --build build --config Debug --target all -j 12 --`

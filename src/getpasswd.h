@@ -27,7 +27,7 @@ namespace  getpasswd {
 #ifdef WIN32
 #include <windows.h>
 
-std::string get_password(std::string &str) {
+inline void get_password(std::string &str) {
     HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
     DWORD mode;
     GetConsoleMode(hStdin, &mode);
