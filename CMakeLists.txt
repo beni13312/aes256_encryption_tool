@@ -10,7 +10,7 @@ add_executable(encrypt_tool
 		src/main.cpp
 		src/encrypt.cpp
 		src/decrypt.cpp
-		src/secure_heap.h
+        src/secure_memory.h
 		src/consts.h
 		src/getpasswd.h
 		src/cli.cpp
@@ -18,7 +18,7 @@ add_executable(encrypt_tool
 		src/args.h
 		src/app.cpp
 		src/app.h
-		src/secure_heap.cpp
+		src/secure_memory.cpp
 )
 target_compile_options(encrypt_tool PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(encrypt_tool PRIVATE ${PROJECT_SOURCE_DIR})

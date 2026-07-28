@@ -1,6 +1,9 @@
-#include "cli.h"
 #include <iostream>
 #include "getpasswd.h"
+#include "cli.h"
+#include "secure_memory.h"
+#include "consts.h"
+
 void cli::help(){
     std::cout << "program [options] [arguments]\n";
     std::cout << "Options:\n";
@@ -50,8 +53,8 @@ Args cli::get_args(int argc, char *argv[]){
         }
         if (arg == "-p" || arg == "--password"){
             std::cout << "Enter password to protect the keyfile: \n";
-            args
-            getpasswd::getpasswd(password_input);
+            args.kdf_password = secure_memory::secure_malloc<char>(8);
+            getpasswd::getpasswd(args.kdf_password);
 
             int passlength = static_cast<int>(password_input.size());
             if(passlength > 0){

@@ -7,7 +7,7 @@
 #include <string>
 #include <memory>
 #include <openssl/evp.h>
-#include "secure_heap.h"
+#include "secure_memory.h"
 #include "consts.h"
 
 using namespace secure_heap;

@@ -5,7 +5,7 @@
 #include <sys/prctl.h>
 #include "encrypt.h"
 #include "decrypt.h"
-#include "secure_heap.h"
+#include "secure_memory.h"
 
 
 // frees allocated secure memory in main

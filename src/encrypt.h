@@ -6,7 +6,7 @@
 #include <string>
 #include <openssl/evp.h>
 #include <memory>
-#include "secure_heap.h"
+#include "secure_memory.h"
 using namespace secure_heap;
 
 class encrypt{
