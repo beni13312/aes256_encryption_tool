@@ -1,10 +1,13 @@
+#pragma once
 
-#ifndef ENCRYPTION_PROJ_APP_H
-#define ENCRYPTION_PROJ_APP_H
-
+#include "args.h"
 
 class App{
+    public:
+    explicit App(Args  args);
+    ~App();
+    int run();
+
+    private:
+        Args args_;
 };
-
-
-#endif //ENCRYPTION_PROJ_APP_H

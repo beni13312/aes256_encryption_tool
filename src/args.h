@@ -1,5 +1,5 @@
-#ifndef ENCRYPTION_PROJ_ARGS_H
-#define ENCRYPTION_PROJ_ARGS_H
+#pragma once
+
 #include <string>
 
 struct Args{
@@ -10,9 +10,5 @@ struct Args{
     std::string keyfile_path;
     std::string input_path;
     std::string output_path;
-    unsigned char* kdf_password = nullptr;
-    size_t kdf_password_len = 0;
+    char* kdf_password = nullptr;
 };
-
-
-#endif //ENCRYPTION_PROJ_ARGS_H

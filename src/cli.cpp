@@ -1,7 +1,9 @@
 #include <iostream>
-#include "getpasswd.h"
+#include <complex>
+#include <cstring>
+
 #include "cli.h"
-#include "secure_memory.h"
+#include "getpasswd.h"
 #include "consts.h"
 
 void cli::help(){
@@ -17,6 +19,12 @@ void cli::help(){
 
 Args cli::get_args(int argc, char *argv[]){
     Args args{};
+
+    if(argc < 2){
+        std::cerr << "Required arguments are missing!\n";
+        help();
+        return args;
+    }
 
     for(int i = 1; i < argc; ++i){
         const std::string_view arg = argv[i];
@@ -53,28 +61,17 @@ Args cli::get_args(int argc, char *argv[]){
         }
         if (arg == "-p" || arg == "--password"){
             std::cout << "Enter password to protect the keyfile: \n";
-            args.kdf_password = secure_memory::secure_malloc<char>(8);
-            getpasswd::getpasswd(args.kdf_password);
+            args.kdf_password = getpasswd::getpasswd();
 
-            int passlength = static_cast<int>(password_input.size());
-            if(passlength > 0){
-                if(passlength < MIN_PASSWORD_LENGTH || passlength > MAX_PASSWORD_LENGTH){
-                    std::cerr << "Password must be at least 8 and maximum 56 characters long\n";
-                    return 1;
-                }
+            int passlength = static_cast<int>(strlen(args.kdf_password));
+            if(passlength < MIN_PASSWORD_LENGTH || passlength > MAX_PASSWORD_LENGTH){
+                std::cerr << "Password must be at least 8 and maximum 56 characters long\n";
+                return args;
 
-                args.password_length = passlength + 1;
-                args.password = secure_heap::secure_malloc<unsigned char>(args.password_length);
-                if(!args.password){
-                    std::cerr << "Failed to allocate memory for password!\n";
-                    return 1;
-                }
-                memcpy(args.password, password_input.c_str(), passlength + 1);
-
-            }else{
-                std::cerr << "Password cannot be empty!\n";
-                return 1;
             }
+            std::cerr << "Password cannot be empty!\n";
+            return args;
         }
     }
+    return args;
 }

@@ -10,8 +10,6 @@
 #include "secure_memory.h"
 #include "consts.h"
 
-using namespace secure_heap;
-
 class decrypt{
 public:
     decrypt(std::string  keyfile_path, std::string  input_path, std::string  output_path);

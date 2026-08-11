@@ -6,27 +6,20 @@
 #include <string>
 #include <openssl/evp.h>
 #include <memory>
+
+#include "args.h"
 #include "secure_memory.h"
-using namespace secure_heap;
 
 class encrypt{
 public:
-    encrypt(std::string   input_path, std::string   output_path,
-    std::string   keyfile_path, bool rand_filename,
-    unsigned char* password, size_t password_length);
+    explicit encrypt(const Args &args);
 
     ~encrypt();
 
-    void AES_encrypt();
+    void run();
 
 private:
-    // args
-    std::string input_path_;
-    std::string output_path_;
-    std::string keyfile_path_;
-    bool rand_filename_;
-    unsigned char* password_ = nullptr;
-    size_t password_length_ = 0;
+    const Args &args_;
 
     size_t total_key_size = 0;
     size_t total_enc_key_size = 0;
