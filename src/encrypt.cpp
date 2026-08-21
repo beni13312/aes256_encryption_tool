@@ -20,40 +20,45 @@ encrypt::encrypt(const Args &args): args_(args){}
 
 
 
-encrypt::~encrypt(){}
+encrypt::~encrypt(){
+    if (key) secure_memory::secure_free<unsigned char>(key, AES_KEY_SIZE);
+}
 
 
 
 // encrypts the file or folder
 void encrypt::run(){
 
-    const std::filesystem::path in_path = args_.input_path;
+    const std::filesystem::path input_path = args_.input_path;
 
-    if(!std::filesystem::exists(in_path)){
-        throw std::runtime_error("Input path does not exist!\n");
+    if(!std::filesystem::exists(input_path)){
+        throw std::runtime_error("Input path does not exist!");
     }
 
     // if specified, using existing private key, else generate the encryption key
-    if(std::filesystem::exists(keyfile_path_)){
+    if(!args_.keyfile_path.empty()){
 
-        std::ifstream keyfile(keyfile_path_, std::ios::binary);
+        std::ifstream keyfile(args_.keyfile_path, std::ios::binary);
 
         if(!keyfile.is_open()){
-            throw std::runtime_error("Failed to open AES keyfile!\n");
+            throw std::runtime_error("Failed to open AES keyfile!");
         }
 
-        key = secure_malloc<unsigned char>(AES_KEY_SIZE);
+        key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
 
         if(!key){
             keyfile.close();
             throw std::runtime_error("Failed to allocate memory for AES key!");
         }
 
-        keyfile.read(reinterpret_cast<char*>(key), AES_KEY_SIZE);
+        if (!keyfile.read(reinterpret_cast<char*>(key), AES_KEY_SIZE).good()){
+            keyfile.close();
+            throw std::runtime_error("Failed to read keyfile!");
+        }
         keyfile.close();
 
     }else{
-        aes_keygen(keyfile_path_);
+        keygen(keyfile_path_);
     }
 
     iv = secure_malloc<unsigned char>(AES_IV_SIZE);

@@ -21,6 +21,11 @@ public:
 private:
     const Args &args_;
 
+    void load_key();
+    void create_key();
+    void keygen();
+    static std::string gen_rand_filename();
+
     size_t total_key_size = 0;
     size_t total_enc_key_size = 0;
     unsigned char* key = nullptr;
@@ -33,8 +38,6 @@ private:
     std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
     std::string filename;
 
-    void aes_keygen(const std::string& keyfile_path);
-    static std::string gen_rand_filename();
 
 
 };

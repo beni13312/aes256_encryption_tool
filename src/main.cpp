@@ -1,7 +1,4 @@
 // fast file/folder encryption/decryption program uses AES256GCM with a randomly generated private key
-#include <iostream>
-#include <openssl/ssl.h>
-#include <openssl/crypto.h>
 
 #include "app.h"
 #include "cli.h"

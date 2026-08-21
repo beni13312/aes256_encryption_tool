@@ -5,6 +5,7 @@
 #include <utility>
 #include "app.h"
 #include "secure_memory.h"
+#include "encrypt.h"
 
 App::App(Args args) : args_(std::move(args)) {
     // disable core dumps
@@ -24,7 +25,7 @@ App::App(Args args) : args_(std::move(args)) {
 }
 
 App::~App(){
-    if(args_.kdf_password) secure_memory::secure_free<char>(args_.kdf_password, strlen(args_.kdf_password));
+    if(args_.password) secure_memory::secure_free<char>(args_.password, strlen(args_.password));
     CRYPTO_secure_malloc_done();
 }
 
