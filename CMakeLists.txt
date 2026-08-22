@@ -8,7 +8,7 @@ find_package(OpenSSL REQUIRED)
 
 add_executable(encrypt_tool
 		src/main.cpp
-		src/encrypt.cpp
+		#src/encrypt.cpp
 		#src/decrypt.cpp
         src/secure_memory.h
 		src/consts.h
@@ -18,7 +18,6 @@ add_executable(encrypt_tool
 		src/args.h
 		src/app.cpp
 		src/app.h
-		src/secure_memory.cpp
 )
 target_compile_options(encrypt_tool PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(encrypt_tool PRIVATE ${PROJECT_SOURCE_DIR})

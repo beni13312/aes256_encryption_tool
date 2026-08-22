@@ -58,7 +58,7 @@ void encrypt::run(){
         keyfile.close();
 
     }else{
-        keygen(keyfile_path_);
+        keygen();
     }
 
     iv = secure_malloc<unsigned char>(AES_IV_SIZE);
