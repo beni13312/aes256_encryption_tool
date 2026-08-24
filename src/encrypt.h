@@ -17,21 +17,19 @@ public:
     ~encrypt();
 
     void run();
+    void keygen();
 
 private:
     const Args &args_;
 
     void load_key();
     void create_key();
-    void keygen();
     static std::string gen_rand_filename();
 
     size_t total_key_size = 0;
     size_t total_enc_key_size = 0;
     unsigned char* key = nullptr;
     unsigned char* encrypted_key = nullptr;
-    unsigned char* plain_keyfile = nullptr;
-    unsigned char* encrypted_keyfile = nullptr;
     unsigned char* salt = nullptr;
     unsigned char* hashed_password = nullptr;
     unsigned char* iv = nullptr;

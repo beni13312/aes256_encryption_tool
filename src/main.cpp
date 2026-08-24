@@ -5,5 +5,6 @@
 
 int main(int argc, char* argv[]){
     App app(cli::get_args(argc, argv));
+    app.run();
     return 0;
 }

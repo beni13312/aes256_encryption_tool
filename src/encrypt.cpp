@@ -5,7 +5,6 @@
 #include <fstream>
 #include <cstring>
 #include <iostream>
-#include <utility>
 #include <vector>
 #include <arpa/inet.h>
 #include <argon2.h>
@@ -22,6 +21,8 @@ encrypt::encrypt(const Args &args): args_(args){}
 
 encrypt::~encrypt(){
     if (key) secure_memory::secure_free<unsigned char>(key, AES_KEY_SIZE);
+    if (iv) secure_memory::secure_free<unsigned char>(iv, AES_IV_SIZE);
+
 }
 
 
@@ -37,31 +38,13 @@ void encrypt::run(){
 
     // if specified, using existing private key, else generate the encryption key
     if(!args_.keyfile_path.empty()){
-
-        std::ifstream keyfile(args_.keyfile_path, std::ios::binary);
-
-        if(!keyfile.is_open()){
-            throw std::runtime_error("Failed to open AES keyfile!");
-        }
-
-        key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
-
-        if(!key){
-            keyfile.close();
-            throw std::runtime_error("Failed to allocate memory for AES key!");
-        }
-
-        if (!keyfile.read(reinterpret_cast<char*>(key), AES_KEY_SIZE).good()){
-            keyfile.close();
-            throw std::runtime_error("Failed to read keyfile!");
-        }
-        keyfile.close();
+        load_key();
 
     }else{
         keygen();
     }
 
-    iv = secure_malloc<unsigned char>(AES_IV_SIZE);
+    iv = secure_memory::secure_malloc<unsigned char>(AES_IV_SIZE);
 
     if(!iv){
         throw std::runtime_error("Failed to allocate memory for AES iv!");
@@ -73,57 +56,44 @@ void encrypt::run(){
     }
 
 
-    if (std::filesystem::is_regular_file(in_path)){
+    if (std::filesystem::is_regular_file(input_path)){
 
-        std::ifstream infile(in_path, std::ios::binary);
+        std::ifstream infile(input_path, std::ios::binary);
         if(!infile.is_open()){
             throw std::runtime_error("Failed to open file for encryption!\n");
         }
 
 
-        std::filesystem::path out_path = output_path_;
+        std::filesystem::path out_path = args_.output_path;
 
         if(!std::filesystem::exists(out_path)){
             throw std::runtime_error("Output path does not exist!\n");
         }
 
+
+        filename = input_path.filename().string();
+
+        if(filename.size() >= FILENAME_MAX_LENGTH){
+            infile.close();
+            throw std::runtime_error("Filename too long to encrypt!\n");
+        }
+
         // getting file name if the user specified a directory
         if(std::filesystem::is_directory(out_path)){
 
-            filename = in_path.filename().string();
-
-            if(filename.size() >= FILENAME_MAX_LENGTH){
-                std::cerr << "Generated filename too long to encrypt!\n";
-                infile.close();
-                throw std::runtime_error("Filename too long to encrypt!\n");
-                }
-
-            if(rand_filename_){
+            if(args_.rand_filename){
 
                 const std::string generated_filename = gen_rand_filename();
 
                 out_path /= generated_filename;
 
             }else{
-                out_path /= in_path.filename();
-
-                std::cout << "Filename: " << filename << "\n";
-                std::cout << "Filepath: " << out_path << "\n";
-                }
-
-        }else{
-            filename = in_path.filename().string();
-
-            if(filename.size() >= FILENAME_MAX_LENGTH){
-                std::cerr << "Filename too long to encrypt!\n";
-                infile.close();
-                throw std::runtime_error("Filename too long to encrypt!\n");
+                out_path /= input_path.filename();
             }
 
-            std::cout << "Filename: " << filename << "\n";
-            std::cout << "Filepath: " << out_path << "\n";
-
         }
+        std::cout << "Filename: " << filename << "\n";
+        std::cout << "Filepath: " << out_path << "\n";
 
         std::ofstream outfile(out_path,  std::ios::binary);
         if(!outfile.is_open()){
@@ -200,7 +170,7 @@ void encrypt::run(){
 
 
         // encrypt file data
-        size_t file_size = std::filesystem::file_size(in_path);
+        size_t file_size = std::filesystem::file_size(input_path);
         std::vector<unsigned char> readbuf(BUFFER_SIZE);
         std::vector<unsigned char> writebuf(BUFFER_SIZE);
 
@@ -247,7 +217,7 @@ void encrypt::run(){
         // write tag at the end of file
         outfile.write(reinterpret_cast<const char*>(tag), AES_TAG_SIZE);
 
-    }else if(std::filesystem::is_directory(in_path)){
+    }else if(std::filesystem::is_directory(input_path)){
         // TODO: implement folder encryption use async for better performance
         return;
     }
@@ -255,7 +225,7 @@ void encrypt::run(){
 }
 // random generates an AES256 key
 void encrypt::aes_keygen(const std::string& keyfile_path){
-    key = secure_malloc<unsigned char>(AES_KEY_SIZE);
+    key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
 
 
     if(!key){
@@ -453,5 +423,35 @@ std::string encrypt::gen_rand_filename(){
 
 }
 
+// loads key from encrypted file and keyfile
+void encrypt::load_key(){
+    std::ifstream keyfile(args_.keyfile_path, std::ios::binary);
 
+    if(!keyfile.is_open()){
+        throw std::runtime_error("Failed to open AES keyfile!");
+    }
 
+    key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
+
+    if(!key){
+        keyfile.close();
+        throw std::runtime_error("Failed to allocate memory for AES key!");
+    }
+
+    if (!keyfile.read(reinterpret_cast<char*>(key), AES_KEY_SIZE).good()){
+        keyfile.close();
+        throw std::runtime_error("Failed to read keyfile!");
+    }
+    keyfile.close();
+}
+
+// generates keys keyfiles for encryption
+void encrypt::keygen(){
+     key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
+    if (!key){
+        throw std::runtime_error("Failed to allocate memory for key!");
+    }
+    if (RAND_bytes(key, AES_KEY_SIZE) != 1){
+        throw std::runtime_error("Failed to generate random key!");
+    }
+}

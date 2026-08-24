@@ -7,12 +7,7 @@ constexpr int MAX_PASSWORD_LENGTH = 56; // character
 inline constexpr size_t FILENAME_MAX_LENGTH = 255;
 inline constexpr size_t FILENAME_SIZE_INT = sizeof(uint32_t);
 
-inline constexpr uint32_t PLAIN_KEYFILE = 0x504B46; // "PKF"
-inline constexpr uint32_t ENCRYPTED_KEYFILE = 0x454B46; // "EKF"
-inline constexpr size_t KEYFILE_ID_SIZE = sizeof(uint32_t);
-
-
-// AES256-GCM parameters 
+// AES256-GCM parameters
 inline constexpr size_t AES_KEY_SIZE = 32; // 32 bytes 
 inline constexpr size_t AES_KEY_LENGTH = 256; // 256 bits
 inline constexpr size_t AES_TAG_SIZE = 16; // 16 bytes

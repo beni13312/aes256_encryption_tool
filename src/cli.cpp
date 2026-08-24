@@ -114,7 +114,7 @@ Args cli::get_args(int argc, char *argv[]){
             }
         }
     }else{ // decrypt
-        if(!args.keyfile_path.empty()){
+        if(args.keyfile_path.empty()){
             std::cout << "Enter password: \n";
             args.password = getpasswd::getpasswd();
         }
