@@ -15,25 +15,25 @@ public:
     explicit encrypt(const Args &args);
 
     ~encrypt();
-
     void run();
-    void keygen();
 
 private:
     const Args &args_;
 
-    void load_key();
-    void create_key();
-    static std::string gen_rand_filename();
+    void load_key(); // loads the key from keyfile
+    void generate_key(); // generates key for encryption
+    void generate_kdf(); // generates KDF from the key
+    void create_keyfile(); // creates the keyfile
+    static std::string gen_rand_filename(); // generates a random filename for encrypted file
 
     size_t total_key_size = 0;
     size_t total_enc_key_size = 0;
+
     unsigned char* key = nullptr;
     unsigned char* encrypted_key = nullptr;
     unsigned char* salt = nullptr;
     unsigned char* hashed_password = nullptr;
     unsigned char* iv = nullptr;
-    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
     std::string filename;
 
 

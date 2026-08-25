@@ -2,12 +2,14 @@
 #include <filesystem>
 #include <stdexcept>
 #include <openssl/evp.h>
+#include <openssl/kdf.h>
+#include <openssl/core_names.h>
+#include <openssl/params.h>
+#include <openssl/thread.h>
 #include <fstream>
-#include <cstring>
 #include <iostream>
 #include <vector>
 #include <arpa/inet.h>
-#include <argon2.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -41,7 +43,7 @@ void encrypt::run(){
         load_key();
 
     }else{
-        keygen();
+        generate_key();
     }
 
     iv = secure_memory::secure_malloc<unsigned char>(AES_IV_SIZE);
@@ -97,7 +99,6 @@ void encrypt::run(){
 
         std::ofstream outfile(out_path,  std::ios::binary);
         if(!outfile.is_open()){
-            std::cerr << "Failed to open file for writing encrypted data!\n";
             infile.close();
             throw std::runtime_error("Failed to open file for writing encrypted data!\n");
         }
@@ -105,13 +106,15 @@ void encrypt::run(){
         // writing iv to the beginning of the file
         outfile.write(reinterpret_cast<const char*>(iv), AES_IV_SIZE);
 
+        std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
+
         if (!ctx) {
             infile.close();
             outfile.close();
             throw std::runtime_error("Failed to create EVP context");
         }
 
-        if (1 != EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr)){
+        if (EVP_EncryptInit_ex2(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1){
             infile.close();
             outfile.close();
             throw std::runtime_error("EVP_EncryptInit_ex failed");
@@ -171,8 +174,9 @@ void encrypt::run(){
 
         // encrypt file data
         size_t file_size = std::filesystem::file_size(input_path);
-        std::vector<unsigned char> readbuf(BUFFER_SIZE);
-        std::vector<unsigned char> writebuf(BUFFER_SIZE);
+        auto readbuf = secure_memory::secure_malloc<unsigned char>(BUFFER_SIZE);
+        auto writebuf = secure_memory::secure_malloc<unsigned char>(BUFFER_SIZE);
+
 
         std::streamsize bytes_read = 0;
         int write_buffer_size = 0;
@@ -223,186 +227,109 @@ void encrypt::run(){
     }
 
 }
-// random generates an AES256 key
-void encrypt::aes_keygen(const std::string& keyfile_path){
+
+
+// loads key from encrypted file and keyfile
+void encrypt::load_key(){
+    const int keyfile = open(args_.keyfile_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+
+    if(keyfile == -1){
+        throw std::runtime_error("Failed to open AES keyfile!");
+    }
+
     key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
 
-
     if(!key){
+        close(keyfile);
         throw std::runtime_error("Failed to allocate memory for AES key!");
     }
-
-    // generate random key
-    if(RAND_bytes(key, AES_KEY_SIZE) != 1){
-        throw std::runtime_error("Failed to generate random AES key!\n");
+    const size_t read_bytes = read(keyfile, key, AES_KEY_SIZE);
+    if (read_bytes != AES_KEY_SIZE){
+        close(keyfile);
+        throw std::runtime_error("Failed to read keyfile!");
     }
+    close(keyfile);
+}
 
-    // open keyfile as read write only to the owner
-    const int keyfile = open(keyfile_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+// generates keys, keyfiles for encryption
+void encrypt::generate_key(){
+     key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
+    if (!key){
+        throw std::runtime_error("Failed to allocate memory for key!");
+    }
+    if (RAND_bytes(key, AES_KEY_SIZE) != 1){
+        throw std::runtime_error("Failed to generate random key!");
+    }
+}
+
+void encrypt::create_keyfile(){
+    if (args_.keyfile_path.empty()){
+        throw std::runtime_error("Keyfile path is empty!");
+    }
+    const int keyfile = open(args_.keyfile_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
     if (keyfile == -1) {
-        perror("open");
         throw std::runtime_error("Failed to open keyfile!\n");
     }
-
-
-    // encrypt the key with password (if provided)
-    if(password_){
-    // [4 bytes]  Keyfile ID (ENCRYPTED_KEYFILE)
-    // [16 bytes] Salt
-    // [12 bytes] iv
-    // [32 bytes] Encrypted AES key
-    // [16 bytes] Auth tag
-
-        if (!ctx) {
-            close(keyfile);
-            throw std::runtime_error("Failed to create EVP context");
-        }
-
-        total_enc_key_size =
-            KEYFILE_ID_SIZE +
-            SALT_SIZE +
-            AES_IV_SIZE +
-            AES_KEY_SIZE +
-            AES_TAG_SIZE;
-
-        encrypted_keyfile = secure_malloc<unsigned char>(total_enc_key_size); // ciphertext + tag
-        if(!encrypted_keyfile){
-            close(keyfile);
-            throw std::runtime_error("Failed to allocate memory for encrypted AES key!");
-        }
-
-        const uint32_t id = htonl(ENCRYPTED_KEYFILE);
-
-
-        // hash the password with argon2
-        salt = secure_malloc<unsigned char>(SALT_SIZE);
-        if(!salt) {
-            close(keyfile);
-            throw std::runtime_error("Failed to allocate memory for salt!");
-        }
-
-        if(RAND_bytes(salt, SALT_SIZE) != 1){
-            close(keyfile);
-            throw std::runtime_error("Failed to generate salt for key encryption!\n");
-        }
-
-        hashed_password = secure_malloc<unsigned char>(AES_KEY_SIZE);
-        if (!hashed_password) {
-            close(keyfile);
-            throw std::runtime_error("Failed to allocate memory for hashed password!");
-        }
-
-        const int result = argon2id_hash_raw(
-            3,            // iterations
-            1 << 16,      // memory (64 MB)
-            4,            // parallelism
-            password_,
-            strlen(reinterpret_cast<const char*>(password_)),
-            salt,         // salt
-            SALT_SIZE,
-            hashed_password,          // output buffer
-            AES_KEY_SIZE   // output length
-        );
-
-        if(result != ARGON2_OK) {
-            std::cerr << "Argon2 hashing failed: " << argon2_error_message(result) << "\n";
-            close(keyfile);
-            throw std::runtime_error("Failed to hash password for key encryption!\n");
-        }
-
-
-
-        // encrypt the key with hashed password
-        unsigned char enc_iv[AES_IV_SIZE];
-
-
-        if(RAND_bytes(enc_iv, AES_IV_SIZE) != 1){
-            close(keyfile);
-            throw std::runtime_error("Failed to generate nonce for key encryption!\n");
-        }
-
-        // encrypt key
-
-        if (1 != EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr)){
-            throw std::runtime_error("EVP_EncryptInit_ex failed");
-        }
-
-        if (1 != EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, AES_IV_SIZE, nullptr)){
-            throw std::runtime_error("Failed to set IV length");
-        }
-
-        // using hashed_password as key
-        if (1 != EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, hashed_password, enc_iv)){
-            throw std::runtime_error("Failed to set key and IV");
-        }
-
-        int outlen = 0;
-
-        if(1 != EVP_EncryptUpdate(ctx.get(), encrypted_key, &outlen, key, AES_KEY_SIZE)){
-            close(keyfile);
-            throw std::runtime_error("Failed to encrypt AES key with password!\n");
-
-        }
-
-
-        // finalize
-        int final_out = 0;
-        if (1 != EVP_EncryptFinal_ex(ctx.get(), nullptr, &final_out)) {
-            throw std::runtime_error("EVP_EncryptFinal_ex failed");
-        }
-
-        // get auth tag
-        unsigned char tag[AES_TAG_SIZE];
-
-        if (1 != EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, AES_TAG_SIZE, tag)) {
-            throw std::runtime_error("Failed to get GCM tag");
-        }
-
-        // reset cipher context
-        EVP_CIPHER_CTX_reset(ctx.get());
-
-        // adding each data to memory buffer
-        unsigned char* p = encrypted_keyfile;
-        memcpy(p,  &id, KEYFILE_ID_SIZE); p += KEYFILE_ID_SIZE;
-        memcpy(p,  &salt, SALT_SIZE); p += SALT_SIZE;
-        memcpy(p,  &enc_iv, AES_IV_SIZE); p += AES_IV_SIZE;
-        memcpy(p,  &encrypted_key, AES_KEY_SIZE); p += AES_KEY_SIZE;
-        memcpy(p,  &tag, AES_TAG_SIZE);
-
-
-        // write the constructed data
-        ssize_t write_n = write(keyfile, encrypted_keyfile, total_enc_key_size);
-        if(write_n != static_cast<ssize_t>(total_enc_key_size)) {
-            throw std::runtime_error("Failed to write AES key file!");
-        }
-
-    } else {
-        // plaintext keyfile
-        total_key_size = KEYFILE_ID_SIZE + AES_KEY_SIZE;
-        plain_keyfile = secure_malloc<unsigned char>(total_key_size);
-
-        const uint32_t id = htonl(ENCRYPTED_KEYFILE);
-
-        if(!plain_keyfile) {
-            close(keyfile);
-            throw std::runtime_error("Failed to allocate memory for keyfile!");
-        }
-
-        unsigned char* p = plain_keyfile;
-        memcpy(p,  &id, KEYFILE_ID_SIZE); p += KEYFILE_ID_SIZE;
-        memcpy(p,  &key, AES_KEY_SIZE);
-
-        ssize_t write_n = write(keyfile, plain_keyfile, total_key_size);
-        if(write_n != static_cast<ssize_t>(total_key_size)) {
-            throw std::runtime_error("Failed to write AES key file!");
-        }
+    if (!key){
+        throw std::runtime_error("Key does not exists");
+        close(keyfile);
     }
-
+    const size_t wrote_bytes = write(keyfile, key, AES_KEY_SIZE);
+    if (wrote_bytes != AES_KEY_SIZE){
+        throw std::runtime_error("Failed to write key into keyfile!");
+        close(keyfile);
+    }
     close(keyfile);
 
 }
 
+void encrypt::generate_kdf(){
+    if (!key){
+        throw std::runtime_error("Failed to allocate memory for key!");
+    }
 
+    EVP_KDF* kdf = EVP_KDF_fetch(nullptr, "Argon2id", nullptr);
+    std::unique_ptr<EVP_KDF_CTX, decltype(&EVP_KDF_CTX_free)> ctx{EVP_KDF_CTX_new(kdf), EVP_KDF_CTX_free};
+
+    OSSL_PARAM params[6], *p = params;
+    uint32_t lanes = 2, threads = 2, memcost = 65536;
+    char* pwd = reinterpret_cast<char*>(key);
+
+    if (RAND_bytes(salt, SALT_SIZE) != 1){
+        throw std::runtime_error("Failed to generate random salt!");
+    }
+
+    unsigned char result[HASH_SIZE];
+
+    if (OSSL_set_max_threads(NULL, threads) != 1){
+        throw std::runtime_error("Failed to set max threads!");
+    }
+
+    p = params;
+    *p++ = OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_THREADS, &threads);
+    *p++ = OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ARGON2_LANES,
+                                       &lanes);
+    *p++ = OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ARGON2_MEMCOST,
+                                       &memcost);
+    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT,
+                                             salt,
+                                             strlen((const char *)salt));
+    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PASSWORD,
+                                             pwd,
+                                             strlen((const char *)pwd));
+    *p++ = OSSL_PARAM_construct_end();
+
+    if ((kdf = EVP_KDF_fetch(NULL, "ARGON2D", NULL)) == NULL){
+        throw std::runtime_error("Failed to generate random kdf!");
+    }
+    if ((ctx = EVP_KDF_CTX_new(kdf)) == NULL){
+        throw std::runtime_error("Failed to generate random kdf!");
+    }
+    if (EVP_KDF_derive(ctx, &result[0], HASH_SIZE, params) != 1){
+        throw std::runtime_error("Failed to generate random kdf!");
+    }
+    
+}
 
 // generates a random filename for the encrypted file
 std::string encrypt::gen_rand_filename(){
@@ -421,37 +348,4 @@ std::string encrypt::gen_rand_filename(){
     std::cout << "Generated random filename: " << hexStr.str() << "\n";
     return hexStr.str();
 
-}
-
-// loads key from encrypted file and keyfile
-void encrypt::load_key(){
-    std::ifstream keyfile(args_.keyfile_path, std::ios::binary);
-
-    if(!keyfile.is_open()){
-        throw std::runtime_error("Failed to open AES keyfile!");
-    }
-
-    key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
-
-    if(!key){
-        keyfile.close();
-        throw std::runtime_error("Failed to allocate memory for AES key!");
-    }
-
-    if (!keyfile.read(reinterpret_cast<char*>(key), AES_KEY_SIZE).good()){
-        keyfile.close();
-        throw std::runtime_error("Failed to read keyfile!");
-    }
-    keyfile.close();
-}
-
-// generates keys keyfiles for encryption
-void encrypt::keygen(){
-     key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
-    if (!key){
-        throw std::runtime_error("Failed to allocate memory for key!");
-    }
-    if (RAND_bytes(key, AES_KEY_SIZE) != 1){
-        throw std::runtime_error("Failed to generate random key!");
-    }
 }

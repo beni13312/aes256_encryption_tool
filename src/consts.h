@@ -16,5 +16,5 @@ inline constexpr size_t BUFFER_SIZE = 64 *  1024; // 64KB
 
 
 // Argon2 parameters
-inline constexpr size_t ARGON2_HASH_SIZE = 32; // 64 bytes
+inline constexpr size_t HASH_SIZE = 128; // 128 bytes
 inline constexpr size_t SALT_SIZE = 16; // 16 bytes

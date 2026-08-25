@@ -33,8 +33,7 @@ int App::run(){
     if (args_.method == Args::Method::ENCRYPT){
 
         std::cout << "Encrypting files\n";
-        auto e = encrypt(args_);
-        e.keygen();
+        auto encrypt(args_);
     } else if (args_.method == Args::Method::DECRYPT){
         // decrypt
     }
