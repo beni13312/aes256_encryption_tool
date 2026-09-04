@@ -84,7 +84,7 @@ Args cli::get_args(int argc, char *argv[]){
         if (!args.keyfile_path.empty() && !std::filesystem::exists(args.keyfile_path)){
             std::cout << "Keyfile does not exists, creating new...\n\n";
 
-            std::cout << "Enter a password to protect the keyfile (press Enter for none): \n";
+            std::cout << "Enter a password to protect the keyfile (press Enter for none): ";
             args.password = getpasswd::getpasswd();
 
             // std::cout << "Confirm password to protect the keyfile (press Enter for none): \n";
@@ -101,7 +101,7 @@ Args cli::get_args(int argc, char *argv[]){
 
         // when keyfile option not used
         if (args.keyfile_path.empty()){
-            std::cout << "Enter a password: \n";
+            std::cout << "Enter a password: ";
             args.password = getpasswd::getpasswd();
 
             // std::cout << "Confirm password: \n";
@@ -115,7 +115,7 @@ Args cli::get_args(int argc, char *argv[]){
         }
     }else{ // decrypt
         if(args.keyfile_path.empty()){
-            std::cout << "Enter password: \n";
+            std::cout << "Enter password: ";
             args.password = getpasswd::getpasswd();
         }
     }

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <sodium/crypto_pwhash.h>
 
 constexpr int  MIN_PASSWORD_LENGTH = 8; // character
 constexpr int MAX_PASSWORD_LENGTH = 56; // character
@@ -15,6 +16,5 @@ inline constexpr size_t AES_IV_SIZE = 12; // 12 bytes
 inline constexpr size_t BUFFER_SIZE = 64 *  1024; // 64KB
 
 
-// Argon2 parameters
-inline constexpr size_t HASH_SIZE = 128; // 128 bytes
-inline constexpr size_t SALT_SIZE = 16; // 16 bytes
+// Argon2id parameters
+inline constexpr size_t SALT_SIZE = crypto_pwhash_SALTBYTES; // 16 bytes

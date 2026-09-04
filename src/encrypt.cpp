@@ -3,17 +3,16 @@
 #include <stdexcept>
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
-#include <openssl/core_names.h>
-#include <openssl/params.h>
-#include <openssl/thread.h>
 #include <fstream>
 #include <iostream>
+#include <cstring>
 #include <vector>
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <openssl/rand.h>
+#include <sodium.h>
 #include "consts.h"
 #include "secure_memory.h"
 
@@ -68,8 +67,8 @@ void encrypt::run(){
 
         std::filesystem::path out_path = args_.output_path;
 
-        if(!std::filesystem::exists(out_path)){
-            throw std::runtime_error("Output path does not exist!\n");
+        if(std::filesystem::exists(out_path)){
+            throw std::runtime_error("Output path already exist!\n");
         }
 
 
@@ -120,13 +119,13 @@ void encrypt::run(){
             throw std::runtime_error("EVP_EncryptInit_ex failed");
         }
 
-        if (1 != EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, AES_IV_SIZE, nullptr)){
+        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, AES_IV_SIZE, nullptr) != 1){
             infile.close();
             outfile.close();
             throw std::runtime_error("Failed to set IV length");
         }
 
-        if (1 != EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key, iv)){
+        if (EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key, iv) != 1){
             infile.close();
             outfile.close();
             throw std::runtime_error("Failed to set key and IV");
@@ -184,21 +183,21 @@ void encrypt::run(){
         while(true){
             const size_t to_read = std::min(file_size, BUFFER_SIZE);
             // read file data in chunks
-            infile.read(reinterpret_cast<char*>(readbuf.data()), static_cast<std::streamsize>(to_read));
+            infile.read(reinterpret_cast<char*>(readbuf), static_cast<std::streamsize>(to_read));
             bytes_read = infile.gcount();
 
             if(bytes_read <= 0){
                 break;
             }
 
-            if (1 != EVP_EncryptUpdate(ctx.get(), writebuf.data(), &write_buffer_size, readbuf.data(), static_cast<int>(bytes_read))){
+            if (1 != EVP_EncryptUpdate(ctx.get(), writebuf, &write_buffer_size, readbuf, static_cast<int>(bytes_read))){
                 infile.close();
                 outfile.close();
                 throw std::runtime_error("Failed to encrypt buffer");
             }
 
             // write encrypted data to output file
-            outfile.write(reinterpret_cast<const char*>(writebuf.data()), write_buffer_size);
+            outfile.write(reinterpret_cast<const char*>(writebuf), write_buffer_size);
             file_size -= bytes_read;
         }
         // finalize
@@ -223,7 +222,6 @@ void encrypt::run(){
 
     }else if(std::filesystem::is_directory(input_path)){
         // TODO: implement folder encryption use async for better performance
-        return;
     }
 
 }
@@ -285,49 +283,17 @@ void encrypt::create_keyfile(){
 
 void encrypt::generate_kdf(){
     if (!key){
-        throw std::runtime_error("Failed to allocate memory for key!");
+        throw std::runtime_error("Failed to generate kdf key!");
     }
 
-    EVP_KDF* kdf = EVP_KDF_fetch(nullptr, "Argon2id", nullptr);
-    std::unique_ptr<EVP_KDF_CTX, decltype(&EVP_KDF_CTX_free)> ctx{EVP_KDF_CTX_new(kdf), EVP_KDF_CTX_free};
+    randombytes_buf(salt, sizeof salt);
 
-    OSSL_PARAM params[6], *p = params;
-    uint32_t lanes = 2, threads = 2, memcost = 65536;
-    char* pwd = reinterpret_cast<char*>(key);
-
-    if (RAND_bytes(salt, SALT_SIZE) != 1){
-        throw std::runtime_error("Failed to generate random salt!");
-    }
-
-    unsigned char result[HASH_SIZE];
-
-    if (OSSL_set_max_threads(NULL, threads) != 1){
-        throw std::runtime_error("Failed to set max threads!");
-    }
-
-    p = params;
-    *p++ = OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_THREADS, &threads);
-    *p++ = OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ARGON2_LANES,
-                                       &lanes);
-    *p++ = OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ARGON2_MEMCOST,
-                                       &memcost);
-    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT,
-                                             salt,
-                                             strlen((const char *)salt));
-    *p++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PASSWORD,
-                                             pwd,
-                                             strlen((const char *)pwd));
-    *p++ = OSSL_PARAM_construct_end();
-
-    if ((kdf = EVP_KDF_fetch(NULL, "ARGON2D", NULL)) == NULL){
-        throw std::runtime_error("Failed to generate random kdf!");
-    }
-    if ((ctx = EVP_KDF_CTX_new(kdf)) == NULL){
-        throw std::runtime_error("Failed to generate random kdf!");
-    }
-    if (EVP_KDF_derive(ctx, &result[0], HASH_SIZE, params) != 1){
-        throw std::runtime_error("Failed to generate random kdf!");
-    }
+    if (crypto_pwhash
+    (key, AES_KEY_SIZE, args_.password, strlen(args_.password), salt,
+         crypto_pwhash_OPSLIMIT_INTERACTIVE, crypto_pwhash_MEMLIMIT_INTERACTIVE,
+         crypto_pwhash_ALG_ARGON2ID13) != 0) {
+        throw std::runtime_error("Failed to generate kdf key! - out of memory");
+         }
     
 }
 

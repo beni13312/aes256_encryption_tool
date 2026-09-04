@@ -22,6 +22,7 @@ add_executable(encrypt_tool
 target_compile_options(encrypt_tool PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(encrypt_tool PRIVATE ${PROJECT_SOURCE_DIR})
 target_link_libraries(encrypt_tool PRIVATE OpenSSL::Crypto OpenSSL::SSL)
+target_link_libraries(encrypt_tool PRIVATE sodium)
 
 find_package(PkgConfig QUIET)
 set(ARGON2_LIB_FOUND FALSE)

@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "args.h"
+#include "consts.h"
 #include "secure_memory.h"
 
 class encrypt{
@@ -31,8 +32,7 @@ private:
 
     unsigned char* key = nullptr;
     unsigned char* encrypted_key = nullptr;
-    unsigned char* salt = nullptr;
-    unsigned char* hashed_password = nullptr;
+    unsigned char salt[SALT_SIZE];
     unsigned char* iv = nullptr;
     std::string filename;
 
