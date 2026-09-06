@@ -1,4 +1,6 @@
 #include "encrypt.h"
+
+#include <array>
 #include <filesystem>
 #include <stdexcept>
 #include <openssl/evp.h>
@@ -258,6 +260,23 @@ void encrypt::generate_key(){
     if (RAND_bytes(key, AES_KEY_SIZE) != 1){
         throw std::runtime_error("Failed to generate random key!");
     }
+}
+
+// generate uniqe IV for each cycle
+std::array<unsigned char, AES_IV_SIZE> encrypt::generate_unique_iv(const uint64_t n){
+    if constexpr (sizeof(base_iv) < AES_IV_SIZE){
+        throw std::runtime_error("base IV does not exists");
+    }
+
+    std::array<unsigned char, AES_IV_SIZE> iv{};
+    memcpy(iv.data(), base_iv, AES_IV_SIZE);
+    // copy n into iv last 8 byte
+    memcpy(iv.data()+4, &n, sizeof(uint64_t));
+
+
+    return iv;
+
+
 }
 
 void encrypt::create_keyfile(){

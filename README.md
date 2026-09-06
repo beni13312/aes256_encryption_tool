@@ -8,6 +8,16 @@ Fast file and folder encryption program using AES-256-GCM
 
 ## Encryption/decryption
 `user password -> KDF -> key -> file/folder`
+
+| Structure of encrypted file |
+|:----------------------------|
+| **filename size**           | 
+| **filename**                | 
+| **base IV**                 | 
+| **cipher data size**        | 
+| **cipher data**             | 
+| **AEAD tag**                |
+
 ## CMake build Debug
 
 `cmake --build build --config Debug --target all -j 12 --`
