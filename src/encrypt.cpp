@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <cstring>
+#include <cassert>
 #include <vector>
 #include <arpa/inet.h>
 #include <sys/stat.h>
@@ -24,7 +25,6 @@ encrypt::encrypt(const Args &args): args_(args){}
 
 encrypt::~encrypt(){
     if (key) secure_memory::secure_free<unsigned char>(key, AES_KEY_SIZE);
-    if (iv) secure_memory::secure_free<unsigned char>(iv, AES_IV_SIZE);
 
 }
 
@@ -47,16 +47,12 @@ void encrypt::run(){
         generate_key();
     }
 
-    iv = secure_memory::secure_malloc<unsigned char>(AES_IV_SIZE);
-
-    if(!iv){
-        throw std::runtime_error("Failed to allocate memory for AES iv!");
-    }
-
     // generating iv
-    if(RAND_bytes(iv, AES_IV_SIZE) != 1){
+    if(RAND_bytes(base_iv, AES_IV_SIZE) != 1){
         throw std::runtime_error("Failed to generate random AES iv!");
     }
+
+    generate_unique_iv();
 
 
     if (std::filesystem::is_regular_file(input_path)){
@@ -143,21 +139,13 @@ void encrypt::run(){
         }
 
         // write filename size
-        int filename_bytes_read = 0;
-        int filename_write_buffer_size = 0;
         uint32_t filename_size = htonl(static_cast<uint32_t>(filename.size()));
 
-        std::vector<unsigned char> filename_writebuf(FILENAME_MAX_LENGTH + FILENAME_SIZE_INT);
+        outfile.write(reinterpret_cast<const char*>(filename_size), FILENAME_SIZE_INT);
 
-
-        if (1 != EVP_EncryptUpdate(ctx.get(), filename_writebuf.data(), &filename_write_buffer_size, reinterpret_cast<unsigned char*>(&filename_size),sizeof(filename_size))){
-            infile.close();
-            outfile.close();
-            throw std::runtime_error("Failed to encrypt buffer");
-        }
-
-
-        outfile.write(reinterpret_cast<const char*>(filename_writebuf.data()), filename_write_buffer_size);
+        int filename_bytes_read = 0;
+        int filename_write_buffer_size = 0;
+        std::vector<unsigned char> filename_writebuf(FILENAME_MAX_LENGTH);
 
         filename_bytes_read = static_cast<int>(filename.size());
 
@@ -174,7 +162,7 @@ void encrypt::run(){
 
 
         // encrypt file data
-        size_t file_size = std::filesystem::file_size(input_path);
+        size_t file_size_to_read = std::filesystem::file_size(input_path);
         auto readbuf = secure_memory::secure_malloc<unsigned char>(BUFFER_SIZE);
         auto writebuf = secure_memory::secure_malloc<unsigned char>(BUFFER_SIZE);
 
@@ -183,13 +171,21 @@ void encrypt::run(){
         int write_buffer_size = 0;
 
         while(true){
-            const size_t to_read = std::min(file_size, BUFFER_SIZE);
+            const size_t bytes_to_read = std::min(file_size_to_read, BUFFER_SIZE);
             // read file data in chunks
-            infile.read(reinterpret_cast<char*>(readbuf), static_cast<std::streamsize>(to_read));
+            infile.read(reinterpret_cast<char*>(readbuf), static_cast<std::streamsize>(bytes_to_read));
             bytes_read = infile.gcount();
 
             if(bytes_read <= 0){
                 break;
+            }
+
+            generate_unique_iv();
+
+            if (EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key, iv) != 1){
+                infile.close();
+                outfile.close();
+                throw std::runtime_error("Failed to set key and IV");
             }
 
             if (1 != EVP_EncryptUpdate(ctx.get(), writebuf, &write_buffer_size, readbuf, static_cast<int>(bytes_read))){
@@ -200,7 +196,7 @@ void encrypt::run(){
 
             // write encrypted data to output file
             outfile.write(reinterpret_cast<const char*>(writebuf), write_buffer_size);
-            file_size -= bytes_read;
+            file_size_to_read -= bytes_read;
         }
         // finalize
         int final_out = 0;
@@ -262,20 +258,13 @@ void encrypt::generate_key(){
     }
 }
 
-// generate uniqe IV for each cycle
-std::array<unsigned char, AES_IV_SIZE> encrypt::generate_unique_iv(const uint64_t n){
-    if constexpr (sizeof(base_iv) < AES_IV_SIZE){
-        throw std::runtime_error("base IV does not exists");
-    }
-
-    std::array<unsigned char, AES_IV_SIZE> iv{};
-    memcpy(iv.data(), base_iv, AES_IV_SIZE);
+// generate unique IV for each cycle
+void encrypt::generate_unique_iv(){
+    // incrementing n_iv to make the iv unique
+    n_iv++;
+    memcpy(iv, base_iv, AES_IV_SIZE);
     // copy n into iv last 8 byte
-    memcpy(iv.data()+4, &n, sizeof(uint64_t));
-
-
-    return iv;
-
+    memcpy(iv+4, &n_iv, sizeof(uint64_t));
 
 }
 

@@ -11,11 +11,11 @@ Fast file and folder encryption program using AES-256-GCM
 
 | Structure of encrypted file |
 |:----------------------------|
-| **filename size**           | 
-| **filename**                | 
 | **base IV**                 | 
-| **cipher data size**        | 
-| **cipher data**             | 
+| **filename size**           | 
+| **filename (encrypted)**    | 
+| **encrypted data size**     | 
+| **encrypted data**          | 
 | **AEAD tag**                |
 
 ## CMake build Debug

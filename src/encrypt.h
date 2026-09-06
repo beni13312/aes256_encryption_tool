@@ -23,7 +23,7 @@ private:
 
     void load_key(); // loads the key from keyfile
     void generate_key(); // generates key for encryption
-    std::array<unsigned char, AES_IV_SIZE> generate_unique_iv(uint64_t n); // generates IV for each cycle
+    void generate_unique_iv(); // generates IV for each cycle
     void generate_kdf(); // generates KDF from the key
     void create_keyfile(); // creates the keyfile
     static std::string gen_rand_filename(); // generates a random filename for encrypted file
@@ -35,6 +35,8 @@ private:
     unsigned char* encrypted_key = nullptr;
     unsigned char salt[SALT_SIZE];
     unsigned char base_iv[AES_IV_SIZE];
+    unsigned char iv[AES_IV_SIZE];
+    uint64_t n_iv = 0;
     std::string filename;
 
 
