@@ -8,7 +8,6 @@
 #include <fstream>
 #include <iostream>
 #include <cstring>
-#include <cassert>
 #include <vector>
 #include <arpa/inet.h>
 #include <sys/stat.h>
@@ -41,7 +40,13 @@ void encrypt::run(){
 
     // if specified, using existing private key, else generate the encryption key
     if(!args_.keyfile_path.empty()){
-        load_key();
+        if (std::filesystem::exists(args_.keyfile_path)){
+            load_key();
+
+        }else{ // create keyfile if it does not exist
+            generate_key();
+            create_keyfile();
+        }
 
     }else{
         generate_key();
@@ -141,7 +146,7 @@ void encrypt::run(){
         // write filename size
         uint32_t filename_size = htonl(static_cast<uint32_t>(filename.size()));
 
-        outfile.write(reinterpret_cast<const char*>(filename_size), FILENAME_SIZE_INT);
+        outfile.write(reinterpret_cast<const char*>(&filename_size), FILENAME_SIZE_INT);
 
         int filename_bytes_read = 0;
         int filename_write_buffer_size = 0;
@@ -203,7 +208,7 @@ void encrypt::run(){
         if (1 != EVP_EncryptFinal_ex(ctx.get(), nullptr, &final_out)) {
             infile.close();
             outfile.close();
-            throw std::runtime_error("EVP_EncryptFinal_ex failed");
+            throw std::runtime_error("Failed to close encryption process");
         }
 
         // get GCM tag
@@ -227,7 +232,7 @@ void encrypt::run(){
 
 // loads key from encrypted file and keyfile
 void encrypt::load_key(){
-    const int keyfile = open(args_.keyfile_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    const int keyfile = open(args_.keyfile_path.c_str(), O_RDONLY);
 
     if(keyfile == -1){
         throw std::runtime_error("Failed to open AES keyfile!");
@@ -268,7 +273,7 @@ void encrypt::generate_unique_iv(){
 
 }
 
-void encrypt::create_keyfile(){
+void encrypt::create_keyfile() const{
     if (args_.keyfile_path.empty()){
         throw std::runtime_error("Keyfile path is empty!");
     }
@@ -277,13 +282,13 @@ void encrypt::create_keyfile(){
         throw std::runtime_error("Failed to open keyfile!\n");
     }
     if (!key){
-        throw std::runtime_error("Key does not exists");
         close(keyfile);
+        throw std::runtime_error("Key does not exists");
     }
     const size_t wrote_bytes = write(keyfile, key, AES_KEY_SIZE);
     if (wrote_bytes != AES_KEY_SIZE){
-        throw std::runtime_error("Failed to write key into keyfile!");
         close(keyfile);
+        throw std::runtime_error("Failed to write key into keyfile!");
     }
     close(keyfile);
 

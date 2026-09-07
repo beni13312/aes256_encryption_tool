@@ -25,7 +25,7 @@ private:
     void generate_key(); // generates key for encryption
     void generate_unique_iv(); // generates IV for each cycle
     void generate_kdf(); // generates KDF from the key
-    void create_keyfile(); // creates the keyfile
+    void create_keyfile() const; // creates the keyfile
     static std::string gen_rand_filename(); // generates a random filename for encrypted file
 
     size_t total_key_size = 0;
