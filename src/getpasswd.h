@@ -8,6 +8,8 @@
 #include <termios.h>
 #include <unistd.h>
 
+constexpr size_t PASSWORD_BUF_SIZE = MAX_PASSWORD_LENGTH + 10 + 1;
+
 namespace  getpasswd {
     inline char* getpasswd() {
         termios oldt{}, newt{};
@@ -17,7 +19,7 @@ namespace  getpasswd {
         newt.c_lflag &= ~ECHO;               // disable echo
         tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
-        constexpr int max_input_length = MAX_PASSWORD_LENGTH + 10 + 1;
+        constexpr int max_input_length = PASSWORD_BUF_SIZE;
         char* buffer = secure_memory::secure_malloc<char>(max_input_length);
         std::cin.getline(buffer, max_input_length);
 

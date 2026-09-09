@@ -35,7 +35,7 @@ void encrypt::run(){
     const std::filesystem::path input_path = args_.input_path;
 
     if(!std::filesystem::exists(input_path)){
-        throw std::runtime_error("Input path does not exist!");
+        throw std::runtime_error("Input file or folder does not exist!");
     }
 
     // if specified, using existing private key, else generate the encryption key
@@ -70,32 +70,31 @@ void encrypt::run(){
 
         std::filesystem::path out_path = args_.output_path;
 
-        if(std::filesystem::exists(out_path)){
-            throw std::runtime_error("Output path already exist!\n");
+        if(!std::filesystem::is_directory(out_path) && std::filesystem::exists(out_path)){
+            throw std::runtime_error("Output file already exist  with the same filename!\n");
         }
 
+        // getting or generating the filename
+        if (args_.rand_filename){
+            filename = gen_rand_filename();
+        }else if(std::filesystem::is_directory(out_path)){
+            filename = input_path.filename().string();
+        }else{
+            filename = out_path.filename().string();
+        }
 
-        filename = input_path.filename().string();
+        if (std::filesystem::is_directory(out_path)){
+            out_path /= filename;
+        }else{
+            out_path = filename;
+        }
 
         if(filename.size() >= FILENAME_MAX_LENGTH){
             infile.close();
             throw std::runtime_error("Filename too long to encrypt!\n");
         }
 
-        // getting file name if the user specified a directory
-        if(std::filesystem::is_directory(out_path)){
 
-            if(args_.rand_filename){
-
-                const std::string generated_filename = gen_rand_filename();
-
-                out_path /= generated_filename;
-
-            }else{
-                out_path /= input_path.filename();
-            }
-
-        }
         std::cout << "Filename: " << filename << "\n";
         std::cout << "Filepath: " << out_path << "\n";
 
