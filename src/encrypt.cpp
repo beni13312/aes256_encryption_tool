@@ -52,12 +52,10 @@ void encrypt::run(){
         generate_key();
     }
 
-    // generating iv
+    // generating base iv
     if(RAND_bytes(base_iv, AES_IV_SIZE) != 1){
         throw std::runtime_error("Failed to generate random AES iv!");
     }
-
-    generate_unique_iv();
 
 
     if (std::filesystem::is_regular_file(input_path)){
@@ -74,19 +72,21 @@ void encrypt::run(){
             throw std::runtime_error("Output file already exist  with the same filename!\n");
         }
 
+        const bool is_out_path_dir = std::filesystem::is_directory(out_path);
+
         // getting or generating the filename
         if (args_.rand_filename){
             filename = gen_rand_filename();
-        }else if(std::filesystem::is_directory(out_path)){
+        }else if(is_out_path_dir){
             filename = input_path.filename().string();
         }else{
             filename = out_path.filename().string();
         }
 
-        if (std::filesystem::is_directory(out_path)){
+        if (is_out_path_dir){
             out_path /= filename;
-        }else{
-            out_path = filename;
+        }else if (args_.rand_filename){
+            out_path = out_path.parent_path() / filename;
         }
 
         if(filename.size() >= FILENAME_MAX_LENGTH){
@@ -106,6 +106,7 @@ void encrypt::run(){
 
         // writing iv to the beginning of the file
         outfile.write(reinterpret_cast<const char*>(iv), AES_IV_SIZE);
+        std::cout << "Wrote IV" << "\n";
 
         std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
 
@@ -133,40 +134,51 @@ void encrypt::run(){
             throw std::runtime_error("Failed to set key and IV");
         }
 
-
-
-        // writing filename
         if(filename.empty()){
             infile.close();
             outfile.close();
             throw std::runtime_error("Filename is empty!");
         }
 
-        // write filename size
-        uint32_t filename_size = htonl(static_cast<uint32_t>(filename.size()));
 
-        outfile.write(reinterpret_cast<const char*>(&filename_size), FILENAME_SIZE_INT);
+        generate_unique_iv();
 
-        int filename_bytes_read = 0;
-        int filename_write_buffer_size = 0;
-        std::vector<unsigned char> filename_writebuf(FILENAME_MAX_LENGTH);
+        // if input filename is the same as the output, skip the filename from writing
+        if (filename != input_path.filename().string()){
+            // write filename size
+            uint32_t filename_size = htonl(static_cast<uint32_t>(filename.size()));
 
-        filename_bytes_read = static_cast<int>(filename.size());
+            outfile.write(reinterpret_cast<const char*>(&filename_size), FILENAME_SIZE_INT);
+            std::cout << "Wrote filename size" << "\n";
 
-        // write filename
-        if (1 != EVP_EncryptUpdate(ctx.get(), filename_writebuf.data(), &filename_write_buffer_size, reinterpret_cast<unsigned char*>(filename.data()), filename_bytes_read)){
-            infile.close();
-            outfile.close();
-            throw std::runtime_error("Failed to encrypt buffer");
+            int filename_bytes_read = 0;
+            int filename_write_buffer_size = 0;
+            std::vector<unsigned char> filename_writebuf(FILENAME_MAX_LENGTH);
+
+            filename_bytes_read = static_cast<int>(filename.size());
+
+            // write filename
+            if (1 != EVP_EncryptUpdate(ctx.get(), filename_writebuf.data(), &filename_write_buffer_size, reinterpret_cast<unsigned char*>(filename.data()), filename_bytes_read)){
+                infile.close();
+                outfile.close();
+                throw std::runtime_error("Failed to encrypt buffer");
+            }
+
+            outfile.write(reinterpret_cast<const char*>(filename_writebuf.data()), filename_write_buffer_size);
+            std::cout << "Wrote encrypted filename" << "\n";
+
         }
 
-        outfile.write(reinterpret_cast<const char*>(filename_writebuf.data()), filename_write_buffer_size);
+        // write the size of the estimated encryoted data
+        size_t file_size_to_read = std::filesystem::file_size(input_path);
+        uint32_t encrypted_data_size = htonl(static_cast<uint32_t>(file_size_to_read));
 
+        outfile.write(reinterpret_cast<const char*>(&encrypted_data_size), sizeof(uint32_t));
+        std::cout << "Wrote encrypted data size" << "\n";
 
 
 
         // encrypt file data
-        size_t file_size_to_read = std::filesystem::file_size(input_path);
         auto readbuf = secure_memory::secure_malloc<unsigned char>(BUFFER_SIZE);
         auto writebuf = secure_memory::secure_malloc<unsigned char>(BUFFER_SIZE);
 
@@ -202,9 +214,11 @@ void encrypt::run(){
             outfile.write(reinterpret_cast<const char*>(writebuf), write_buffer_size);
             file_size_to_read -= bytes_read;
         }
+        std::cout << "Wrote encrypted data" << "\n";
+
         // finalize
         int final_out = 0;
-        if (1 != EVP_EncryptFinal_ex(ctx.get(), nullptr, &final_out)) {
+        if (EVP_EncryptFinal_ex(ctx.get(), nullptr, &final_out) != 1) {
             infile.close();
             outfile.close();
             throw std::runtime_error("Failed to close encryption process");
@@ -221,9 +235,11 @@ void encrypt::run(){
 
         // write tag at the end of file
         outfile.write(reinterpret_cast<const char*>(tag), AES_TAG_SIZE);
+        std::cout << "Wrote GCM tag" << "\n";
 
     }else if(std::filesystem::is_directory(input_path)){
-        // TODO: implement folder encryption use async for better performance
+        // TODO: implement folder encryption
+
     }
 
 }
