@@ -26,10 +26,13 @@ private:
     void generate_unique_iv(); // generates IV for each cycle
     void generate_kdf(); // generates KDF from the key
     void create_keyfile() const; // creates the keyfile
+    void encrypt_buffer( // handles the encryption
+        EVP_CIPHER_CTX* ctx,
+        unsigned char* readbuf,
+        unsigned char* writebuf,
+        size_t buffer_size
+        );
     static std::string gen_rand_filename(); // generates a random filename for encrypted file
-
-    size_t total_key_size = 0;
-    size_t total_enc_key_size = 0;
 
     unsigned char* key = nullptr;
     unsigned char* encrypted_key = nullptr;

@@ -239,7 +239,13 @@ void encrypt::run(){
 
     }else if(std::filesystem::is_directory(input_path)){
         // TODO: implement folder encryption
+        for (auto &entry : std::filesystem::recursive_directory_iterator(input_path)){
+            if (entry.is_regular_file()){
+                std::cout << "Encrypting: " << entry.path().string() << "\n";
+                // TODO: implement encryption
 
+            }
+        }
 
     }
 
