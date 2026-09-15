@@ -10,6 +10,12 @@
 #include <arpa/inet.h>
 #include "getpasswd.h"
 
+decrypt::decrypt(const Args &args): args_(args){}
+
+void decrypt::run(){
+
+}
+
 // generates the hash from user password
 unsigned char* decrypt::get_enc_key(const unsigned char* salt) {
     hash = secure_malloc<unsigned char>(AES_KEY_SIZE);

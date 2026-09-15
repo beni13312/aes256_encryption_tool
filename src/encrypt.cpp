@@ -169,7 +169,7 @@ void encrypt::run(){
 
         }
 
-        // write the size of the estimated encryoted data
+        // write the size of the estimated encrypted data
         size_t file_size_to_read = std::filesystem::file_size(input_path);
         uint32_t encrypted_data_size = htonl(static_cast<uint32_t>(file_size_to_read));
 

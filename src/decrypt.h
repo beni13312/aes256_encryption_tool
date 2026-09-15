@@ -5,33 +5,31 @@
 #pragma once
 
 #include <string>
-#include <memory>
-#include <openssl/evp.h>
-#include "secure_memory.h"
 #include "consts.h"
+#include "cli.h"
 
 class decrypt{
 public:
-    decrypt(std::string  keyfile_path, std::string  input_path, std::string  output_path);
+    explicit decrypt(const Args &args);
     ~decrypt();
 
-    void AES_decrypt();
+    void run();
 
 private:
-    std::string keyfile_path_;
-    std::string input_path_;
-    std::string output_path_;
+    const Args &args_;
 
-    std::string password;
-    unsigned char* enc_key = nullptr;
-    unsigned char* enc_iv = nullptr;
-    unsigned char* hash = nullptr;
-    unsigned char* iv = nullptr;
+    void load_keyfile() const; // loads the key from the keyfile
+    void derive_key(); // derive key from user's password
+    void derive_iv(); // derive the IV back for each cycle
+
     unsigned char* key = nullptr;
-    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
+    unsigned char* encrypted_key = nullptr;
+    unsigned char salt[SALT_SIZE];
+    unsigned char base_iv[AES_IV_SIZE];
+    unsigned char iv[AES_IV_SIZE];
+    uint64_t n_iv = 0;
+    std::string filename;
 
-    void get_aes_key(const std::string &keyfile_path);
-    unsigned char* get_enc_key(const unsigned char* salt);
 
 
 };

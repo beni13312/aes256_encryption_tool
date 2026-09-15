@@ -9,7 +9,7 @@ find_package(OpenSSL REQUIRED)
 add_executable(encrypt_tool
 		src/main.cpp
 		src/encrypt.cpp
-		#src/decrypt.cpp
+		src/decrypt.cpp
         src/secure_memory.h
 		src/consts.h
 		src/getpasswd.h
