@@ -12,6 +12,7 @@ Fast file and folder encryption program using AES-256-GCM
 | Structure of encrypted file |
 |:----------------------------|
 | **base IV**                 | 
+| **salt**                    |
 | **filename size**           | 
 | **filename (encrypted)**    | 
 | **encrypted data size**     | 
