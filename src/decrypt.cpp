@@ -3,6 +3,8 @@
 #include <openssl/evp.h>
 #include <sodium.h>
 #include <fstream>
+#include <fcntl.h>
+#include <cstring>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -13,17 +15,18 @@
 decrypt::decrypt(const Args &args): args_(args){}
 
 decrypt::~decrypt(){
+    if (key) secure_memory::secure_free<unsigned char>(key, AES_KEY_SIZE);
 }
 
 void decrypt::run(){
-            const std::filesystem::path input_path = args_.input_path;
+    const std::filesystem::path input_path = args_.input_path;
 
     if(!std::filesystem::exists(input_path)){
-        throw std::runtime_error("Path does not exist!\n");
+        throw std::runtime_error("Input path does not exist!\n");
     }
 
     // retrieve the AES key
-    load_keyfile(args_.keyfile_path);
+    load_keyfile();
 
     // decrypt
     if (std::filesystem::is_regular_file(input_path)){
@@ -33,22 +36,20 @@ void decrypt::run(){
             throw std::runtime_error("Failed to open file for decryption!\n");
         }
 
-        const std::filesystem::path out_path = args_.output_path;
-        if(!std::filesystem::is_directory(out_path)){
+        const std::filesystem::path output_path = args_.output_path;
+        if(!std::filesystem::is_directory(output_path)){
             infile.close();
-            throw std::runtime_error("Output path must be a directory when decrypting a file!\n");
+            throw std::runtime_error("Output path must be a directory\n");
         }
 
         std::ofstream outfile;
 
 
         // read iv from infile
-        iv = secure_malloc<unsigned char>(AES_IV_SIZE);
-        if(!iv){
-            infile.close();
-            throw std::runtime_error("Failed to allocate memory for AES iv!");
-        }
         infile.read(reinterpret_cast<char*>(iv), AES_IV_SIZE);
+
+        // read salt from input file
+        infile.read(reinterpret_cast<char*>(salt), SALT_SIZE);
 
         std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
 
@@ -57,17 +58,17 @@ void decrypt::run(){
             throw std::runtime_error("Failed to create EVP context");
         }
 
-        if (1 != EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr)){
+        if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1){
             infile.close();
             throw std::runtime_error("EVP_DecryptInit_ex failed");
         }
 
-        if (1 != EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, AES_IV_SIZE, nullptr)){
+        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, AES_IV_SIZE, nullptr) != 1){
             infile.close();
             throw std::runtime_error("Failed to set IV length");
         }
 
-        if (1 != EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key, iv)){
+        if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key, iv) != 1){
             infile.close();
             throw std::runtime_error("Failed to set key and IV");
         }
@@ -94,7 +95,6 @@ void decrypt::run(){
         filename_size = ntohl(filename_size);
 
         // read filename
-        std::string filename;
         int filename_write_buffer_size = 0;
 
         infile.read(reinterpret_cast<char*>(filename_readbuf.data()), filename_size);
@@ -114,7 +114,7 @@ void decrypt::run(){
         filename.assign(reinterpret_cast<char*>(filename_writebuf.data()), filename_write_buffer_size);
         std::cout << "Decrypted filename: " << filename << "\n";
 
-        const std::filesystem::path file_full = out_path / filename; // user input + filename
+        const std::filesystem::path file_full = output_path / filename; // user input + filename
 
         // open the file after the filename is known
         outfile.open(file_full, std::ios::binary);
@@ -174,105 +174,55 @@ void decrypt::run(){
 
     }else{
         std::cerr << "Only files can be specified\n";
-        return;
     }
 }
 
 // generates the hash from user password
-void decrypt::derive_key(const unsigned char* salt) {
+void decrypt::derive_key() {
+    if (!key){
+        throw std::runtime_error("Failed to generate kdf key!");
+    }
 
+    randombytes_buf(salt, sizeof salt);
+
+    if (crypto_pwhash
+    (key, AES_KEY_SIZE, args_.password, strlen(args_.password), salt,
+         crypto_pwhash_OPSLIMIT_INTERACTIVE, crypto_pwhash_MEMLIMIT_INTERACTIVE,
+         crypto_pwhash_ALG_ARGON2ID13) != 0) {
+        throw std::runtime_error("Failed to generate kdf key! - out of memory");
+         }
+}
+
+void decrypt::derive_iv() {
+    // incrementing n_iv to make the iv unique
+    n_iv++;
+    memcpy(iv, base_iv, AES_IV_SIZE);
+    // copy n into iv last 8 byte
+    memcpy(iv+4, &n_iv, sizeof(uint64_t));
 }
 
 
 
-void decrypt::load_keyfile(const std::string& keyfile_path){
-    std::ifstream keyfile(keyfile_path, std::ios::binary);
+// loads key from keyfile
+void decrypt::load_keyfile(){
+    const int keyfile = open(args_.keyfile_path.c_str(), O_RDONLY);
 
-    if(!keyfile.is_open()){
-        throw std::runtime_error("Failed to open AES keyfile!\n");
+    if(keyfile == -1){
+        throw std::runtime_error("Failed to open AES keyfile!");
     }
 
-    key = secure_malloc<unsigned char>(AES_KEY_SIZE);
-    uint32_t keyfile_id = 0;
+    key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
 
     if(!key){
+        close(keyfile);
         throw std::runtime_error("Failed to allocate memory for AES key!");
     }
-
-    // read the id fom the keyfile
-
-    keyfile.read(reinterpret_cast<char*>(keyfile_id), KEYFILE_ID_SIZE);
-
-    keyfile_id = ntohl(keyfile_id); // deserialize
-
-    if (keyfile_id == ENCRYPTED_KEYFILE) {
-        std::cout << "Enter keyfile password: \n";
-        getpasswd::getpasswd(password);
-
-        unsigned char salt[SALT_SIZE];
-        enc_key = secure_malloc<unsigned char>(AES_KEY_SIZE);
-        enc_iv = secure_malloc<unsigned char>(AES_IV_SIZE + AES_TAG_SIZE);
-
-
-        if(!enc_key || !enc_iv){
-            throw std::runtime_error("Failed to allocate memory for keyfile credentials!");
-        }
-
-        // getting salt and iv from file
-        keyfile.read(reinterpret_cast<char*>(salt), SALT_SIZE);
-        keyfile.read(reinterpret_cast<char*>(enc_iv), AES_IV_SIZE);
-
-        std::vector<unsigned char> ciphertext(AES_KEY_SIZE);
-
-
-        enc_key = get_enc_key(salt);
-
-        if (!ctx) {
-            throw std::runtime_error("Failed to create EVP context");
-        }
-
-        if (1 != EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr)){
-
-            throw std::runtime_error("EVP_DecryptInit_ex failed");
-        }
-
-        if (1 != EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, AES_IV_SIZE, nullptr)){
-
-            throw std::runtime_error("Failed to set IV length");
-        }
-
-        if (1 != EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, enc_key, enc_iv)){
-            throw std::runtime_error("Failed to set key and IV");
-        }
-
-        int write_buffer_size = 0;
-        if (1 != EVP_DecryptUpdate(ctx.get(), key, &write_buffer_size, ciphertext.data(),AES_KEY_SIZE)){
-            throw std::runtime_error("Failed to decrypt buffer");
-        }
-
-        // set GCM tag (16 bytes typical)
-        unsigned char tag[AES_TAG_SIZE];
-        keyfile.read(reinterpret_cast<char*>(tag), AES_TAG_SIZE);
-
-
-        if (1 != EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, AES_TAG_SIZE, tag)) {
-            throw std::runtime_error("Filed to set GCM tag, maybe the file is corrupted!\n");
-        }
-        // finalize
-        int final_out = 0;
-        if (1 != EVP_DecryptFinal_ex(ctx.get(), nullptr, &final_out)) {
-            throw std::runtime_error("EVP_DecryptFinal_ex failed");
-        }
-
-
-    }else if (keyfile_id == PLAIN_KEYFILE) {
-        keyfile.read(reinterpret_cast<char*>(key), AES_KEY_SIZE);
-        keyfile.close();
-
+    const size_t read_bytes = read(keyfile, key, AES_KEY_SIZE);
+    if (read_bytes != AES_KEY_SIZE){
+        close(keyfile);
+        throw std::runtime_error("Failed to read keyfile!");
     }
-
-
-
+    close(keyfile);
 }
 
 

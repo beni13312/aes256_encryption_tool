@@ -39,7 +39,6 @@ private:
     static std::string gen_rand_filename(); // generates a random filename for encrypted file
 
     unsigned char* key = nullptr;
-    unsigned char* encrypted_key = nullptr;
     unsigned char salt[SALT_SIZE];
     unsigned char base_iv[AES_IV_SIZE];
     unsigned char iv[AES_IV_SIZE];

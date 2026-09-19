@@ -108,6 +108,9 @@ void encrypt::run(){
         output_fs.write(reinterpret_cast<const char*>(iv), AES_IV_SIZE);
         std::cout << "Wrote IV" << "\n";
 
+        // write salt for KDF
+        output_fs.write(reinterpret_cast<const char*>(salt), SALT_SIZE);
+
         std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
 
         if (!ctx) {
@@ -252,7 +255,7 @@ void encrypt::run(){
 }
 
 
-// loads key from encrypted file and keyfile
+// loads key from keyfile
 void encrypt::load_key(){
     const int keyfile = open(args_.keyfile_path.c_str(), O_RDONLY);
 

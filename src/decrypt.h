@@ -18,12 +18,11 @@ public:
 private:
     const Args &args_;
 
-    void load_keyfile() const; // loads the key from the keyfile
+    void load_keyfile(); // loads the key from the keyfile
     void derive_key(); // derive key from user's password
     void derive_iv(); // derive the IV back for each cycle
 
     unsigned char* key = nullptr;
-    unsigned char* encrypted_key = nullptr;
     unsigned char salt[SALT_SIZE];
     unsigned char base_iv[AES_IV_SIZE];
     unsigned char iv[AES_IV_SIZE];
