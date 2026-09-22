@@ -146,7 +146,6 @@ void encrypt::run(){
 
         generate_unique_iv();
 
-        // if input filename is the same as the output, skip the filename from writing
         if (filename != input_path.filename().string()){
             // write filename size
             uint32_t filename_size = htonl(static_cast<uint32_t>(filename.size()));
@@ -170,6 +169,12 @@ void encrypt::run(){
             output_fs.write(reinterpret_cast<const char*>(filename_writebuf.data()), filename_write_buffer_size);
             std::cout << "Wrote encrypted filename" << "\n";
 
+        }else{
+            // write filename size (0)
+            uint32_t filename_size = htonl(0);
+
+            output_fs.write(reinterpret_cast<const char*>(&filename_size), FILENAME_SIZE_INT);
+            std::cout << "Wrote filename size (0)" << "\n";
         }
 
         // write the size of the estimated encrypted data

@@ -6,6 +6,7 @@
 #include "app.h"
 #include "secure_memory.h"
 #include "encrypt.h"
+#include "decrypt.h"
 
 App::App(Args args) : args_(std::move(args)) {
     // disable core dumps
@@ -36,7 +37,9 @@ int App::run(){
         auto e = encrypt(args_);
         e.run();
     } else if (args_.method == Args::Method::DECRYPT){
-        // decrypt
+        std::cout << "Decrypting files\n";
+        auto d = decrypt(args_);
+        d.run();
     }
     return 0;
 }
