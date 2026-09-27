@@ -26,24 +26,22 @@ void decrypt::run(){
     }
 
 
-    // decrypt
-
-    std::ifstream infile(input_path, std::ios::binary);
-    if(!infile.is_open()){
+    std::ifstream input_fs(input_path, std::ios::binary);
+    if(!input_fs.is_open()){
         throw std::runtime_error("Failed to open file for decryption!\n");
     }
 
     const std::filesystem::path output_path = args_.output_path;
 
-    std::ofstream outfile;
+    std::ofstream output_fs;
 
 
-    // read iv from infile
-    infile.read(reinterpret_cast<char*>(iv), AES_IV_SIZE);
+    // read base iv from infile
+    input_fs.read(reinterpret_cast<char*>(base_iv), AES_IV_SIZE);
 
 
     // read salt from input file
-    infile.read(reinterpret_cast<char*>(salt), SALT_SIZE);
+    input_fs.read(reinterpret_cast<char*>(salt), SALT_SIZE);
 
     if (!args_.keyfile_path.empty()){
         // retrieve the AES key
@@ -55,74 +53,82 @@ void decrypt::run(){
     std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx{EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free};
 
     if (!ctx) {
-        infile.close();
+        input_fs.close();
         throw std::runtime_error("Failed to create EVP context");
     }
 
     if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1){
-        infile.close();
+        input_fs.close();
         throw std::runtime_error("EVP_DecryptInit_ex failed");
     }
 
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, AES_IV_SIZE, nullptr) != 1){
-        infile.close();
+        input_fs.close();
         throw std::runtime_error("Failed to set IV length");
     }
 
     if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key, iv) != 1){
-        infile.close();
+        input_fs.close();
         throw std::runtime_error("Failed to set key and IV");
     }
 
     // read filename size
-    u_int32_t filename_size = 0;
+    u_int32_t filename_size_ntl = 0;
 
-    infile.read(reinterpret_cast<char*>(ntohl(filename_size)), FILENAME_SIZE_INT);
-    std::streamsize filename_size_bytes_read = infile.gcount();
+    input_fs.read(reinterpret_cast<char*>(&filename_size_ntl), FILENAME_SIZE_INT);
+    u_int32_t filename_size = ntohl(filename_size_ntl);
+    std::streamsize filename_size_bytes_read = input_fs.gcount();
 
     if(filename_size_bytes_read != static_cast<std::streamsize>(FILENAME_SIZE_INT)){
-        infile.close();
+        input_fs.close();
         throw std::runtime_error("Failed to get filename size!");
 
     }
 
 
-    // read filename
     std::vector<unsigned char> filename_readbuf(FILENAME_MAX_LENGTH);
     std::vector<unsigned char> filename_writebuf(FILENAME_MAX_LENGTH);
+
+    std::filesystem::path output_file_path;
+
+    // read filename
     int filename_write_buffer_size = 0;
+    if (filename_size != 0){
+        input_fs.read(reinterpret_cast<char*>(filename_readbuf.data()), filename_size);
+        std::streamsize filename_bytes_read = input_fs.gcount();
 
-    infile.read(reinterpret_cast<char*>(filename_readbuf.data()), filename_size);
-    std::streamsize filename_bytes_read = infile.gcount();
+        if(filename_bytes_read == 0 || filename_bytes_read > static_cast<std::streamsize>(FILENAME_MAX_LENGTH)){
+            input_fs.close();
+            throw std::runtime_error("Failed to read filename!");
 
-    if(filename_bytes_read == 0 || filename_bytes_read > static_cast<std::streamsize>(FILENAME_MAX_LENGTH)){
-        infile.close();
-        throw std::runtime_error("Failed to read filename!");
+        }
 
+        derive_iv();
+        if (1 != EVP_DecryptUpdate(ctx.get(), filename_writebuf.data(), &filename_write_buffer_size, filename_readbuf.data(), static_cast<int>(filename_bytes_read))){
+            input_fs.close();
+            throw std::runtime_error("Failed to decrypt buffer");
+        }
+
+        filename.assign(reinterpret_cast<char*>(filename_writebuf.data()), filename_write_buffer_size);
+        std::cout << "Decrypted filename: " << filename << "\n";
+
+        output_file_path = output_path / filename; // user input + filename
+    }else{
+        output_file_path = output_path / input_path.filename();
     }
-
-    derive_iv();
-    if (1 != EVP_DecryptUpdate(ctx.get(), filename_writebuf.data(), &filename_write_buffer_size, filename_readbuf.data(), static_cast<int>(filename_bytes_read))){
-        infile.close();
-        throw std::runtime_error("Failed to decrypt buffer");
-    }
-
-    filename.assign(reinterpret_cast<char*>(filename_writebuf.data()), filename_write_buffer_size);
-    std::cout << "Decrypted filename: " << filename << "\n";
-
-    const std::filesystem::path file_full = output_path / filename; // user input + filename
 
     // open the file after the filename is known
-    outfile.open(file_full, std::ios::binary);
-    if (!outfile.is_open()) {
-        infile.close();
+    output_fs.open(output_file_path, std::ios::binary);
+    if (!output_fs.is_open()) {
+        input_fs.close();
         throw std::runtime_error("Failed to open file for writing decrypted data!\n");
     }
 
     // read encrypted data size
-    size_t encrypted_data_size = 0;
+    uint32_t encrypted_data_size_ntl = 0;
 
-    infile.read(reinterpret_cast<char*>(ntohl(encrypted_data_size)), sizeof(uint32_t));
+    input_fs.read(reinterpret_cast<char*>(&encrypted_data_size_ntl), sizeof(uint32_t));
+    uint32_t encrypted_data_size = ntohl(encrypted_data_size_ntl);
 
 
     // decrypt data
@@ -133,45 +139,41 @@ void decrypt::run(){
     int write_buffer_size = 0;
 
     while(true){
-        size_t to_read = std::min(encrypted_data_size, BUFFER_SIZE);
-        infile.read(reinterpret_cast<char*>(readbuf.data()), static_cast<std::streamsize>(to_read));
-        bytes_read = infile.gcount();
+        size_t to_read = std::min(static_cast<size_t>(encrypted_data_size), BUFFER_SIZE);
+        input_fs.read(reinterpret_cast<char*>(readbuf.data()), static_cast<std::streamsize>(to_read));
+        bytes_read = input_fs.gcount();
         if(bytes_read <= 0){
             break;
         }
         derive_iv();
         if (1 != EVP_DecryptUpdate(ctx.get(), writebuf.data(), &write_buffer_size, readbuf.data(), static_cast<int>(bytes_read))){
-            infile.close();
-            outfile.close();
+            input_fs.close();
+            output_fs.close();
             throw std::runtime_error("Failed to decrypt buffer");
         }
 
-        outfile.write(reinterpret_cast<const char*>(writebuf.data()), write_buffer_size);
+        output_fs.write(reinterpret_cast<const char*>(writebuf.data()), write_buffer_size);
         encrypted_data_size -= bytes_read;
     }
     // set GCM tag (16 bytes typical)
     unsigned char tag[AES_TAG_SIZE];
-    infile.read(reinterpret_cast<char*>(tag),AES_TAG_SIZE);
+    input_fs.read(reinterpret_cast<char*>(tag),AES_TAG_SIZE);
 
     if (1 != EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, AES_TAG_SIZE, tag)) {
-        infile.close();
-        outfile.close();
+        input_fs.close();
+        output_fs.close();
         throw std::runtime_error("Filed to set GCM tag, maybe the file is corrupted!\n");
     }
     // finalize
     int final_out = 0;
     if (1 != EVP_DecryptFinal_ex(ctx.get(), nullptr, &final_out)) {
-        infile.close();
-        outfile.close();
+        input_fs.close();
+        output_fs.close();
         throw std::runtime_error("EVP_DecryptFinal_ex failed");
     }
 
-
-
-
-
-    infile.close();
-    outfile.close();
+    input_fs.close();
+    output_fs.close();
 
 
 
@@ -179,6 +181,8 @@ void decrypt::run(){
 
 // generates the hash from user password with the given salt
 void decrypt::derive_key() {
+    key = secure_memory::secure_malloc<unsigned char>(AES_KEY_SIZE);
+
     if (!key){
         throw std::runtime_error("Failed to generate kdf key!");
     }

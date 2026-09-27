@@ -105,7 +105,7 @@ void encrypt::run(){
         }
 
         // writing iv to the beginning of the file
-        output_fs.write(reinterpret_cast<const char*>(iv), AES_IV_SIZE);
+        output_fs.write(reinterpret_cast<const char*>(base_iv), AES_IV_SIZE);
         std::cout << "Wrote IV" << "\n";
 
         // write salt for KDF
@@ -222,6 +222,9 @@ void encrypt::run(){
             output_fs.write(reinterpret_cast<const char*>(writebuf), write_buffer_size);
             file_size_to_read -= bytes_read;
         }
+        secure_memory::secure_free(readbuf, BUFFER_SIZE);
+        secure_memory::secure_free(writebuf, BUFFER_SIZE);
+
         std::cout << "Wrote encrypted data" << "\n";
 
         // finalize
@@ -244,6 +247,9 @@ void encrypt::run(){
         // write tag at the end of file
         output_fs.write(reinterpret_cast<const char*>(tag), AES_TAG_SIZE);
         std::cout << "Wrote GCM tag" << "\n";
+
+        input_fs.close();
+        output_fs.close();
 
     }else if(std::filesystem::is_directory(input_path)){
         // TODO: implement folder encryption
